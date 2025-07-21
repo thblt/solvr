@@ -1,0 +1,6 @@
+// Puff pastry amounts.
+
+flour;
+water = .5 * flour
+salt = 0.02 * flour
+butter = .75 * flour

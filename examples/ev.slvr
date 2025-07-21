@@ -1,0 +1,24 @@
+# Ev calculator for photography.
+# This is an example of fully interdependant variables.  
+
+# We don’t store fstops as powers of square root of two
+# to avoid meddling with irrational numbers.  Since
+# f-stops are a power of √2, we just store the nth of that power.
+fstop :: integer {
+	default = 5 // Fifth power of √2 = 5.6
+	values = []
+	display {
+		transform = pow(sqrt(2, fstop))
+		format = decimal { decimals = 1, zero = false}
+	}
+}
+
+// We store time as milliseconds, and let the user 
+time :: integer {
+	default = 20 // 1/200
+}
+
+ev :: float {
+	
+}
+

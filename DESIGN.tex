@@ -1,0 +1,358 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{tabularx}
+\title{Solvr}
+\author{Thibault Polge}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Arithmetic expressions}
+\label{sec:org2a8643b}
+
+\subsection{The expression tree}
+\label{sec:orgb0147b1}
+
+Internally, an expression is encoded as a tree where nodes are either
+a value (either a literal of some type, or a variable), or a n-ary
+operation.
+
+\begin{verbatim}
+pub enum Expr<O, T> {
+    Term(T),
+    Op(O, Vec<Self>),
+}
+\end{verbatim}
+
+\subsection{Term types}
+
+Solvr knows three primitive numeric types:
+
+\begin{itemize}
+\item Integer
+\item Fractional
+\item Float (real)
+\end{itemize}
+
+The default type for integral values is Fractional.  Fractional values
+are of the form \texttt{A/B}, and internally encoded as a tree parameterized
+by the Integral type:
+
+\begin{verbatim}
+pub enum Fractional<I> {
+    Exactly(I),
+    Frac(Box<Self>, Box<Self>)
+}
+\end{verbatim}
+
+\subsection{NR values}
+
+Fractional computation can include non-representable values.  For
+example:
+
+\begin{verbatim}
+pi == nr(3.14) # Display approximation.
+circ == 2 * pi * radius
+area == pi * radius ** 2
+
+> radius = 33
+circ = 66*pi (approx 207.34511513692635)
+area = 1089*pi (approx 3421.194399759285)
+\end{verbatim}
+
+TODO: nr() should have an option to set if a given nr equals to
+itself (default to yes)
+
+\section{Properties of operations}
+
+A binary operation $\cdot$ is:
+
+\begin{description}
+\item[commutative] iff both its parameters have the same type and the
+  operation is such as $a\cdot b = b\cdot a$
+\item[associative] iff both its parameters have the same type and the
+  operation is such as $(a \cdot b) \cdot c = a \cdot (b \cdot c)$
+\item[distributive] over an operation $\odot$
+
+
+
+\end{description}
+\section{Expression normalization}
+
+Solvr needs to be able to demonstrate that two expression are
+equivalent.  To do so, expressions are normalized to normal forms.
+
+Normalization runs bottom-up, starting at the deeper nodes of the tree
+and regressing up.  The walker looks as follows:
+
+\begin{verbatim}
+fn normalize_walk(&self) -> Self {
+    match self {
+        Expr::Term => self.clone(),
+        Expr::Op(op, args) => normalize(Expr::Op { op, args.iter.map(normalize).collect() })
+    }
+}
+\end{verbatim}
+
+Those rules are more are less artificially divided in simplification
+and normalization rules.
+
+\subsection{Simplifaction rules}
+
+The simplification rules simplify the expression by eliminating
+redundant terms and operations.  The simplification rules are:
+
+\noindent\begin{tabularx}{\textwidth}{p{3cm}r{2cm}r}
+  \hline
+  $a \cdotp e$ & \to $ a$ & Monoid neutral element $e$ \\
+  $e \cdotp a$ & \to $ a$ & \\
+  \hline
+  $a \times 0$ & \to $ 0$ & Multiplication by zero \\
+  $0 \times a$ & \to $ 0$ \\
+  \hline
+  $a / 1$ & \to $ 0$ & Division by one \\
+  \hline
+  $--a$ & \to $ a$ & Nested unary negation \\
+  \hline
+  $\frac{1}{(\frac{1}{a})}$ & \to $ a$ & Nested inverse multiplication \\
+  \hline
+  $a^n \times a^m$ & \to $ a^{n+m}$ & Power multiplication (1) \\
+  \hline
+  ${a^n} / {a^m}$ & \to $ a^{n-m}$ & Power division (1) \\
+  \hline
+  $a + a$ & \to $ a \times 2$ & Self-addition \\
+  \hline
+  $a - a$ & \to $ 0$ & Self-subtraction \\
+  \hline
+  $a / a$ & \to $ 1$ & Self-division \\
+  \hline
+  $a \times a$ & \to $ a^2$ & Self-multiplication \\
+  \hline
+  $a^0$ & \to $ 1$ & Power of zero \\
+  \hline
+  $a^1$ & \to $ a$ & Power of one \\
+  \hline
+
+\end{tabularx}
+
+\subsection{Normalization rules}
+
+The strictly normalisation rules are as follows:
+
+\begin{enumerate}
+\item \textbf{Pure} expressions of \textbf{integers} are immediately evaluated: 3 + 2
+  normalizes to 5.
+\item Impure commutative operations have their members sorted.  The
+  ordering makes variable appear first, then direct values in the
+  natural order of their type.  Variables are themselves sorted in the
+  natural order of their internal integer id (*not* by their text
+  representation).  The following set: [a, aa, b, delta, x, 3, 18, 49,
+  293] is well-sorted.
+
+  (This implies that normalization must always \emph{follow} interning)
+
+
+
+
+
+\end{enumerate}
+
+
+
+
+
+\section{Type inference}
+\label{sec:org5775a2b}
+
+Solvr is statically typed.  Most of the basic arithmetic operations
+are polymorphic over types.  Literals are unambiguous in their types.
+The type inference engine simply infers the types of each
+sub-expression, starting with the known types of literals and the
+possible type combinations of operations.  For example:
+
+\begin{verbatim}
+a = 2 * b
+\end{verbatim}
+
+\begin{itemize}
+\item \texttt{*} is either \texttt{float\_product: (Float, Float) -> Float} or  \texttt{int\_product: (Int, Int) -> Int}.
+\item The literal 2 is an Int.
+\item Thus, \texttt{b} mus be an int and `*` specializes to \texttt{int\_product}.
+\item The return type of the complete expression is thus the return type of \texttt{int\_product}, hence Int.
+\item Therefore: \texttt{a: Int = int\_product(2, b); b: Int}
+\end{itemize}
+
+Expressions are normalized in a
+\subsection{Simplification}
+\label{sec:orgbcd82e2}
+
+Simplification eliminates redundant operations.
+
+Expressions are simplified.  Simplification is part of normalization.
+
+\begin{center}
+\begin{tabular}{ll}
+1 * a & a\\
+a * 1 & \\
+a ** 0 & 1\\
+a ** 1 & a\\
+a + 0 & a\\
+0 + a & a\\
+a / 1 & a\\
+a * a & a ** 2\\
+a ** n * a & a ** n + 1\\
+(2 * a) / 2 & \\
+b * (a / b) & a\\
+(b * a) / b & a\\
+ & \\
+\end{tabular}
+\end{center}
+\section{Definition inference}
+\label{sec:org6d87edf}
+
+A complete (compiled) Solvr system is able to compute values for the
+full system starting with any given value.  This is done by computing
+reverse definitions by swapping and substituting.
+
+A definition is a pair (V, E) of a variable name and an expression
+defining that variable, possibly using other variables). The defined
+variable must not appear in the expression.
+\subsection{Inverse functions and inverse expressions}
+\label{sec:orga49eee1}
+
+Definition inference relies fundamentally on the notion of inverse
+functions.  Given a function f, the inverse function of f is function
+f′ such as f′ · f == id
+
+In the simple case of the unary function \texttt{-}, the inverse is the
+function itself.
+
+We often want the inverse of an \emph{expression}.  This is done by calling
+\texttt{inverse} on its operation.  \texttt{inverse} takes the index of the argument
+to eliminate (the \emph{x}), and a new element to substitute.  If the new
+element is equivalent to the original operation, the resulting
+expression is equivalent to the term being removed.
+
+If we know that
+a = b * 3
+
+calling inverse(0, a) on \texttt{b * 3} returns
+
+a / 3
+
+which is the value of b.
+
+We can verify (for sanity) that the resulting operation is correct by
+verifying that substituting \texttt{a / 3} for \texttt{b} in the original expression
+reduces to the trivial self-identity:
+
+\begin{verbatim}
+a = b       * 3
+a = (a / 3) * 3
+a = (a * 3) / 3
+a = a
+\end{verbatim}
+\subsection{Algorithm 0}
+\label{sec:org140ff4f}
+
+This algorithm is used only if the (simplified) right-hand expression
+is pure, that is, refers to no other variable.  In this case, the
+value of the defined variable is simply calculated.
+
+Examples:
+
+\begin{verbatim}
+a = 3 + 5
+b = e - e
+c = d * 0
+\end{verbatim}
+
+All those definitions are pure (after simplification for the latter
+two).  They reduce to a = 8, b = 0, c = 0.
+\subsection{Algorithm 1}
+\label{sec:org513acd8}
+
+This algorithm if used if the simplified definition refers to only one
+variable, and refers to that variable only once.
+
+This algorithm works by building, step by step, a pair of equivalent
+expressions, by moving terms from the right to the left until the
+rightmost term is just a variable.
+
+Notice that the simplification algorithm will fold additions into
+multiplication, and multiplications into power.  So those definitions:
+
+\begin{verbatim}
+a = b + b + 2
+b = c * 4 * c
+\end{verbatim}
+
+will be processed by algorithm 1, simplified respectively to \texttt{2 * b + 2} and \texttt{4 * c ** 2}.
+
+
+\begin{verbatim}
+a           = 2 + (2 * b) # Node is Add(2, Sum(2, b))
+a - 2       = 2 * b
+(a - 2) / 2 = b
+
+Sanity check:
+
+a = 2 + (2 * (a - 2) / 2)
+a = 2 +      (a - 2)
+a =           a
+
+\end{verbatim}
+\subsection{Algorithm 2}
+\label{sec:orgb19eb8c}
+
+
+
+A set of definition of variables, in terms of algebraic operations
+over other variables.  For example:
+
+\begin{verbatim}
+a = 2 * b
+a = 3 * c
+d = c ** 2           # power function
+\end{verbatim}
+
+It then tries to infer the full set of definitions, to be able to
+compute every variable in the system in terms of any other
+variable.  In the example above, there are four variables
+
+a, defined in terms of b.
+a, defined in terms of c.
+d, defined in terms of c.
+
+\begin{center}
+\begin{tabular}{lllll}
+ & a & b & c & d\\
+a & = & \textbf{2*b} & \textbf{3×c} & \\
+b &  & = &  & \\
+c &  &  & = & \\
+d &  &  & \textbf{c**2} & =\\
+\end{tabular}
+\end{center}
+
+Solvr then tries to compute the missing definitions.  The easiest
+case is to simply reverse the existing definitions: for all
+variables A and B, if we know A in terms of B, we can compute B
+from A.
+
+\begin{center}
+\begin{tabular}{lllll}
+ & a & b & c & d\\
+a & = & 2* & 3* & \\
+b & \textbf{a/2} & = &  & \\
+c & \textbf{a/3} &  & = & \textbf{sqrt(d)}\\
+d &  &  & **2 & =\\
+\end{tabular}
+\end{center}
+\end{document}

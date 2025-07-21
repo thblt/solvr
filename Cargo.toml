@@ -1,0 +1,16 @@
+[package]
+name = "solvr"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "solvr"
+
+[dependencies]
+bimap = "0.6.3"
+clap = { version = "4.5.42", features = ["derive"] }
+nom = "8.0.0"
+nom-language = "0.1.0"
